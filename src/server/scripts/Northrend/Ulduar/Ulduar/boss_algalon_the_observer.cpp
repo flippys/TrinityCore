@@ -178,8 +178,8 @@ enum EncounterPhases
     PHASE_ROLE_PLAY          = 1,
     PHASE_BIG_BANG           = 2,
 
-    PHASE_MASK_NO_UPDATE     = (1 << PHASE_ROLE_PLAY) | (1 << PHASE_BIG_BANG),
-    PHASE_MASK_NO_CAST_CHECK = 1 << PHASE_ROLE_PLAY,
+    PHASE_MASK_NO_UPDATE     = (1 << PHASE_ROLE_PLAY - 1) | (1 << PHASE_BIG_BANG - 1),
+    PHASE_MASK_NO_CAST_CHECK = 1 << PHASE_ROLE_PLAY - 1,
 };
 
 enum AchievmentInfo
@@ -542,12 +542,12 @@ class boss_algalon_the_observer : public CreatureScript
 
             void UpdateAI(uint32 const diff)
             {
-                if ((!(events.GetPhaseMask() & PHASE_MASK_NO_UPDATE) && !UpdateVictim()) || !CheckInRoom())
+                if ((!(events.IsInPhase(PHASE_ROLE_PLAY) || events.IsInPhase(PHASE_BIG_BANG)) && !UpdateVictim()) || !CheckInRoom())
                     return;
 
                 events.Update(diff);
 
-                if (!(events.GetPhaseMask() & PHASE_MASK_NO_CAST_CHECK))
+                if (!events.IsInPhase(PHASE_ROLE_PLAY))
                     if (me->HasUnitState(UNIT_STATE_CASTING))
                         return;
 
@@ -772,7 +772,7 @@ class npc_living_constellation : public CreatureScript
 
             void UpdateAI(uint32 const diff)
             {
-                if (!(_events.GetPhaseMask() & PHASE_MASK_NO_UPDATE) && !UpdateVictim())
+                if (!(_events.IsInPhase(PHASE_ROLE_PLAY) || _events.IsInPhase(PHASE_BIG_BANG)) && !UpdateVictim())
                     return;
 
                 _events.Update(diff);

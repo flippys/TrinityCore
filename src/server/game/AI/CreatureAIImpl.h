@@ -331,10 +331,24 @@ class EventMap : private std::map<uint32, uint32>
         // Sets event phase, must be in range 1 - 8
         void SetPhase(uint32 phase)
         {
-            if (phase && phase < 8)
-                _phase = (1 << (phase + 24));
+            if (phase && phase <= 8)
+                _phase = (1 << (phase + 23));
             else if (!phase)
                 _phase = 0;
+        }
+
+        // Activates event phase, must be in range 1 - 8
+        void AddPhase(uint32 phase)
+        {
+            if (phase && phase <= 8)
+                _phase |= (1 << (phase + 23));
+        }
+
+        // Deactivates event phase, must be in range 1 - 8
+        void SubPhase(uint32 phase)
+        {
+            if (phase && phase <= 8)
+                _phase &= ~(1 << (phase + 23));
         }
 
         // Creates new event entry in map with given id, time, group if given (1 - 8) and phase if given (1 - 8)
@@ -342,10 +356,10 @@ class EventMap : private std::map<uint32, uint32>
         void ScheduleEvent(uint32 eventId, uint32 time, uint32 groupId = 0, uint32 phase = 0)
         {
             time += _time;
-            if (groupId && groupId < 9)
-                eventId |= (1 << (groupId + 16));
-            if (phase && phase < 8)
-                eventId |= (1 << (phase + 24));
+            if (groupId && groupId <= 8)
+                eventId |= (1 << (groupId + 15));
+            if (phase && phase <= 8)
+                eventId |= (1 << (phase + 23));
             const_iterator itr = find(time);
             while (itr != end())
             {
@@ -436,7 +450,9 @@ class EventMap : private std::map<uint32, uint32>
         void DelayEvents(uint32 delay, uint32 groupId)
         {
             uint32 nextTime = _time + delay;
-            uint32 groupMask = (1 << (groupId + 16));
+            if (!groupId || groupId > 8)
+                return;
+            uint32 groupMask = (1 << (groupId + 15));
             for (iterator itr = begin(); itr != end() && itr->first < nextTime;)
             {
                 if (itr->second & groupMask)
@@ -468,7 +484,9 @@ class EventMap : private std::map<uint32, uint32>
         // Cancel events belonging to specified group
         void CancelEventGroup(uint32 groupId)
         {
-            uint32 groupMask = (1 << (groupId + 16));
+            if (!groupId || groupId > 8)
+                return;
+            uint32 groupMask = (1 << (groupId + 15));
 
             for (iterator itr = begin(); itr != end();)
             {
@@ -491,6 +509,12 @@ class EventMap : private std::map<uint32, uint32>
                     return itr->first;
 
             return 0;
+        }
+
+        // Returns wether the eventmap is in the given phase or not.
+        bool IsInPhase(uint32 phase)
+        {
+            return phase <= 8 && (!phase || _phase & (1 << phase - 1));
         }
 
     private:

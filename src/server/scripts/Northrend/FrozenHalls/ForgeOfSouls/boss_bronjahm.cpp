@@ -56,7 +56,9 @@ enum Events
 enum CombatPhases
 {
     PHASE_1 = 1,
-    PHASE_2 = 2
+    PHASE_2 = 2,
+
+    PHASE_1_MASK = 1 << PHASE_1 - 1
 };
 
 class boss_bronjahm : public CreatureScript
@@ -118,7 +120,7 @@ class boss_bronjahm : public CreatureScript
 
             void DamageTaken(Unit* /*attacker*/, uint32& /*damage*/)
             {
-                if (events.GetPhaseMask() & (1 << PHASE_1) && !HealthAbovePct(30))
+                if (events.IsInPhase(PHASE_1) && !HealthAbovePct(30))
                 {
                     events.SetPhase(PHASE_2);
                     DoCast(me, SPELL_TELEPORT);
