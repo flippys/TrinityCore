@@ -21,6 +21,9 @@
 #include "eye_of_eternity.h"
 #include "Player.h"
 
+
+const Position IntroLandingPos       = {770.10f, 1275.33f, 267.23f, 0.0f};
+
 class instance_eye_of_eternity : public InstanceMapScript
 {
 public:
@@ -42,6 +45,7 @@ public:
 
             malygosGUID = 0;
             lastPortalGUID = 0;
+            alexstraszaBunnyGUID = 0;
             platformGUID = 0;
             exitPortalGUID = 0;
         };
@@ -139,6 +143,9 @@ public:
                 case NPC_PORTAL_TRIGGER:
                     portalTriggers.push_back(creature->GetGUID());
                     break;
+                case NPC_ALEXSTRASZA_BUNNY:
+                    alexstraszaBunnyGUID = creature->GetGUID();
+                    break;
             }
         }
 
@@ -146,11 +153,12 @@ public:
         {
             if (eventId == EVENT_FOCUSING_IRIS)
             {
-                if (GameObject* go = obj->ToGameObject())
-                    go->Delete(); // this is not the best way.
+                if (Creature* alexstraszaBunny = instance->GetCreature(alexstraszaBunnyGUID))
+                    alexstraszaBunny->CastSpell(alexstraszaBunny, SPELL_IRIS_OPENED);
 
                 if (Creature* malygos = instance->GetCreature(malygosGUID))
-                    malygos->GetMotionMaster()->MovePoint(4, 770.10f, 1275.33f, 267.23f); // MOVE_INIT_PHASE_ONE
+                    
+                    malygos->GetMotionMaster()->MoveLand(4, IntroLandingPos); // MOVE_INIT_PHASE_ONE
 
                 if (GameObject* exitPortal = instance->GetGameObject(exitPortalGUID))
                     exitPortal->Delete();
@@ -194,7 +202,7 @@ public:
 
         void PowerSparksHandling()
         {
-            bool next =  (lastPortalGUID == portalTriggers.back() || !lastPortalGUID ? true : false);
+            bool next = (lastPortalGUID == portalTriggers.back() || !lastPortalGUID ? true : false);
 
             for (std::list<uint64>::const_iterator itr_trigger = portalTriggers.begin(); itr_trigger != portalTriggers.end(); ++itr_trigger)
             {
@@ -288,6 +296,7 @@ public:
             std::list<uint64> portalTriggers;
             uint64 malygosGUID;
             uint64 lastPortalGUID;
+            uint64 alexstraszaBunnyGUID;
             uint64 platformGUID;
             uint64 exitPortalGUID;
             uint64 chestGUID;

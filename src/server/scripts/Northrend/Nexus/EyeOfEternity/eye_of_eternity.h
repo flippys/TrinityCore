@@ -44,7 +44,8 @@ enum InstanceNpcs
     NPC_HOVER_DISK_CASTER   = 30248,
     NPC_ARCANE_OVERLOAD     = 30282,
     NPC_WYRMREST_SKYTALON   = 30161,
-    NPC_ALEXSTRASZA         = 32295
+    NPC_ALEXSTRASZA         = 32295,
+    NPC_ALEXSTRASZA_BUNNY   = 31253
 };
 
 enum InstanceGameObjects
@@ -63,10 +64,11 @@ enum InstanceEvents
 
 enum InstanceSpells
 {
-    SPELL_VORTEX_4          = 55853, // damage | used to enter to the vehicle
-    SPELL_VORTEX_5          = 56263, // damage | used to enter to the vehicle
-    SPELL_PORTAL_OPENED     = 61236,
-    SPELL_RIDE_RED_DRAGON   = 56071,
+    SPELL_VORTEX_4                        = 55853, // damage | used to enter to the vehicle
+    SPELL_VORTEX_5                        = 56263, // damage | used to enter to the vehicle
+    SPELL_PORTAL_OPENED                   = 61236,
+    SPELL_RIDE_RED_DRAGON_TRIGGERED       = 56072,
+    SPELL_IRIS_OPENED                     = 61012  // visual when starting encounter
 };
 
 #endif

@@ -26,6 +26,9 @@ Script Data End */
 // Implement achievements
 // Remove hack that re-adds targets to the aggro list after they enter to a vehicle when it works as expected
 // Improve whatever can be improved :)
+// DoCast(SPELL_DESTROY_PLATFORM_BOOM); - needs to be casted by 28859
+// DoCast(SPELL_DESTROY_PLATFORM_EVENT); - needs to be casted by 31253
+// DoCast(SPELL_DESTROY_PLATFORM_CHANNEL); - needs to be casted by 31253
 
 #include "ScriptMgr.h"
 #include "ScriptedCreature.h"
@@ -56,7 +59,7 @@ enum Events
     EVENT_SURGE_POWER   = 5, // wowhead is wrong, Surge of Power is casted instead of Arcane Pulse (source sniffs!)
     EVENT_SUMMON_ARCANE = 6,
 
-    // =========== PHASE TWO ===============
+    // =========== PHASE THREE ===============
     EVENT_SURGE_POWER_PHASE_3 = 7,
     EVENT_STATIC_FIELD = 8,
 
@@ -95,10 +98,17 @@ enum Spells
 
     SPELL_SURGE_POWER = 56505, // used in phase 2
     SPELL_SUMMON_ARCANE_BOMB = 56429,
-    SPELL_ARCANE_OVERLOAD = 56432,
+    SPELL_ARCANE_OVERLOAD_1 = 56432, // casted by npc Arcane Overload ID: 30282
+    //SPELL_ARCANE_OVERLOAD_2 = 56435, // Triggered by 56432
+    //SPELL_ARCANE_OVERLOAD_3 = 56438, // Triggered by 56432
     SPELL_SUMMOM_RED_DRAGON = 56070,
     SPELL_SURGE_POWER_PHASE_3 = 57407,
-    SPELL_STATIC_FIELD = 57430
+    SPELL_STATIC_FIELD = 57430,
+
+    // Phase 3
+    SPELL_DESTROY_PLATFORM_CHANNEL = 58842,
+    SPELL_DESTROY_PLATFORM_BOOM = 59084, // casted by 31253
+    SPELL_DESTROY_PLATFORM_EVENT = 59099 // casted by 31253
 };
 
 enum Movements
@@ -107,7 +117,8 @@ enum Movements
     MOVE_PHASE_TWO,
     MOVE_DEEP_BREATH_ROTATION,
     MOVE_INIT_PHASE_ONE,
-    MOVE_CENTER_PLATFORM
+    MOVE_CENTER_PLATFORM,
+    MOVE_LAND_AFTER_VORTEX
 };
 
 enum Seats
@@ -152,14 +163,14 @@ enum Texts
     SAY_BUFF_SPARK                      = 11,
     SAY_KILLED_PLAYER_P_THREE           = 12,
     SAY_SPELL_CASTING_P_THREE           = 13,
-    SAY_DEATH,
-
+    SAY_DEATH                           = 14,
+     
     // Alexstrasza
     SAY_ONE                             = 0,
     SAY_TWO                             = 1,
     SAY_THREE                           = 2,
     SAY_FOUR                            = 3,
-
+     
     // Power Sparks
     EMOTE_POWER_SPARK_SUMMONED            = 0
 };
@@ -216,11 +227,12 @@ const Position MalygosPhaseTwoWaypoints[MALYGOS_MAX_WAYPOINTS] =
 
 #define MAX_SUMMONS_PHASE_TWO 4
 
-#define MAX_MALYGOS_POS 2
+#define MAX_MALYGOS_POS 3
 const Position MalygosPositions[MAX_MALYGOS_POS] =
 {
     {754.544f, 1301.71f, 320.0f, 0.0f},
     {754.39f, 1301.27f, 292.91f, 0.0f},
+    {754.362f, 1301.61f, 266.171f, 0.0f}
 };
 
 class boss_malygos : public CreatureScript
@@ -259,12 +271,15 @@ public:
 
             _cannotMove = true;
 
-            me->SetCanFly(true);
-
             if (instance)
                 instance->DoStopTimedAchievement(ACHIEVEMENT_TIMED_TYPE_EVENT, ACHIEV_TIMED_START_EVENT);
         }
 
+        bool CanAIAttack(Unit const* target) const
+        {
+            return target->GetTypeId() == TYPEID_PLAYER || target->IsVehicle();
+        }
+        
         uint32 GetData(uint32 data) const
         {
             if (data == DATA_SUMMON_DEATHS)
@@ -290,8 +305,6 @@ public:
         {
             me->SetHomePosition(_homePosition);
 
-            me->SetDisableGravity(true);
-
             BossAI::EnterEvadeMode();
 
             if (instance)
@@ -316,26 +329,21 @@ public:
 
             SetPhase(PHASE_THREE, true);
 
-            // this despawns Hover Disks
-            summons.DespawnAll();
-            // players that used Hover Disk are no in the aggro list
-            me->SetInCombatWithZone();
-            ThreatContainer::StorageType const& m_threatlist = me->getThreatManager().getThreatList();
-            for (ThreatContainer::StorageType::const_iterator itr = m_threatlist.begin(); itr!= m_threatlist.end(); ++itr)
+            summons.DespawnAll();       // this despawns Hover Disks
+            me->SetInCombatWithZone();       // players that used Hover Disk aren't in the aggro list anymore
+            std::list<Player*> playerList;
+            Trinity::AnyPlayerInObjectRangeCheck checker(me, 200.0f);
+            Trinity::PlayerListSearcher<Trinity::AnyPlayerInObjectRangeCheck> searcher(me, playerList, checker);
+            me->VisitNearbyWorldObject(200.0f, searcher);
+            for (std::list<Player*>::const_iterator itr = playerList.begin(); itr != playerList.end(); ++itr)
             {
-                if (Unit* target = (*itr)->getTarget())
-                {
-                    if (target->GetTypeId() != TYPEID_PLAYER)
-                        continue;
-
-                    // The rest is handled in the AI of the vehicle.
-                    target->CastSpell(target, SPELL_SUMMOM_RED_DRAGON, true);
-                    me->Attack(target, false);
-                }
+                // The rest is handled in the AI of the vehicle.
+                (*itr)->CastSpell((*itr), SPELL_SUMMOM_RED_DRAGON, true);
             }
 
-            if (GameObject* go = GameObject::GetGameObject(*me, instance->GetData64(DATA_PLATFORM)))
-                go->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_DESTROYED); // In sniffs it has this flag, but i don't know how is applied.
+            Talk(SAY_INTRO_P_THREE);
+
+            DoAction
 
             // pos sniffed
             me->GetMotionMaster()->MoveIdle();
@@ -373,9 +381,6 @@ public:
         void EnterCombat(Unit* /*who*/)
         {
             _EnterCombat();
-
-            me->SetDisableGravity(false);
-            me->SetCanFly(false);
 
             me->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
 
@@ -432,11 +437,8 @@ public:
 
         void PrepareForVortex()
         {
-            me->SetDisableGravity(true);
-            me->SetCanFly(true);
-
             me->GetMotionMaster()->MovementExpired();
-            me->GetMotionMaster()->MovePoint(MOVE_VORTEX, MalygosPositions[1].GetPositionX(), MalygosPositions[1].GetPositionY(), MalygosPositions[1].GetPositionZ());
+            me->GetMotionMaster()->MoveTakeoff(MOVE_VORTEX, MalygosPositions[1]);
             // continues in MovementInform function.
         }
 
@@ -451,7 +453,7 @@ public:
 
         void MovementInform(uint32 type, uint32 id)
         {
-            if (type != POINT_MOTION_TYPE)
+            if (type != POINT_MOTION_TYPE && type != EFFECT_MOTION_TYPE)
                 return;
 
             switch (id)
@@ -466,11 +468,15 @@ public:
                     me->GetMotionMaster()->MovePoint(MOVE_DEEP_BREATH_ROTATION, MalygosPhaseTwoWaypoints[_currentPos]);
                     break;
                 case MOVE_INIT_PHASE_ONE:
+                {
+                    if (GameObject* go = me->FindNearestGameObject(GO_FOCUSING_IRIS, 50.0f))
+                        go->Delete(); // this is not the best way.
                     me->SetInCombatWithZone();
+                }
                     break;
                 case MOVE_CENTER_PLATFORM:
                     // Malygos is already flying here, there is no need to set it again.
-                    _cannotMove = false;
+                    _cannotMove = false;    
                     // malygos will move into center of platform and then he does not chase dragons, he just turns to his current target.
                     me->GetMotionMaster()->MoveIdle();
                     break;
@@ -481,11 +487,8 @@ public:
         {
             SetPhase(PHASE_TWO, true);
 
-            me->SetDisableGravity(true);
-            me->SetCanFly(true);
-
             me->GetMotionMaster()->MoveIdle();
-            me->GetMotionMaster()->MovePoint(MOVE_DEEP_BREATH_ROTATION, MalygosPhaseTwoWaypoints[0]);
+            me->GetMotionMaster()->MoveTakeoff(MOVE_DEEP_BREATH_ROTATION, MalygosPhaseTwoWaypoints[0]);
 
             for (uint8 i = 0; i < 2; i++)
             {
@@ -523,7 +526,7 @@ public:
                     if (me->GetMotionMaster()->GetCurrentMovementGeneratorType() != POINT_MOTION_TYPE)
                     {
                         me->GetMotionMaster()->MovementExpired();
-                        me->GetMotionMaster()->MovePoint(MOVE_CENTER_PLATFORM, MalygosPositions[0].GetPositionX(), MalygosPositions[0].GetPositionY(), MalygosPositions[0].GetPositionZ());
+                        me->GetMotionMaster()->MovePoint(MOVE_CENTER_PLATFORM, MalygosPositions[0]);
                     }
                 }
             }
@@ -723,11 +726,7 @@ class spell_malygos_vortex_visual : public SpellScriptLoader
                         // This is a hack, we have to re add players to the threat list because when they enter to the vehicles they are removed.
                         // Anyway even with this issue, the boss does not enter in evade mode - this prevents iterate an empty list in the next vortex execution.
                         malygos->SetInCombatWithZone();
-
-                        malygos->SetDisableGravity(false);
-                        malygos->SetCanFly(false);
-
-                        malygos->GetMotionMaster()->MoveChase(caster->getVictim());
+                        malygos->GetMotionMaster()->MoveLand(MOVE_LAND_AFTER_VORTEX, MalygosPositions[2]);
                         malygos->RemoveAura(SPELL_VORTEX_1);
                     }
                 }
@@ -743,6 +742,33 @@ class spell_malygos_vortex_visual : public SpellScriptLoader
         AuraScript* GetAuraScript() const
         {
             return new spell_malygos_vortex_visual_AuraScript();
+        }
+};
+
+class spell_wyrmrest_skytalon_ride_red_dragon_buddy_trigger : public SpellScriptLoader
+{
+    public:
+        spell_wyrmrest_skytalon_ride_red_dragon_buddy_trigger() : SpellScriptLoader("spell_wyrmrest_skytalon_ride_red_dragon_buddy_trigger") { }
+
+        class spell_wyrmrest_skytalon_ride_red_dragon_buddy_trigger_SpellScript : public SpellScript
+        {
+            PrepareSpellScript(spell_wyrmrest_skytalon_ride_red_dragon_buddy_trigger_SpellScript);
+
+            void HandleScript(SpellEffIndex /*effIndex*/)
+            {
+                if (Unit* const target = GetHitUnit())
+                    target->CastSpell(GetCaster(), GetEffectValue(), true);
+            }
+
+            void Register()
+            {
+                OnEffectHitTarget += SpellEffectFn(spell_wyrmrest_skytalon_ride_red_dragon_buddy_trigger_SpellScript::HandleScript, EFFECT_0, SPELL_EFFECT_SCRIPT_EFFECT);
+            }
+        };
+
+        SpellScript* GetSpellScript() const
+        {
+            return new spell_wyrmrest_skytalon_ride_red_dragon_buddy_trigger_SpellScript();
         }
 };
 
@@ -909,8 +935,7 @@ public:
             }
             else
             {
-                // Error found: This is not called if the passenger is a player
-                if (unit->GetTypeId() == TYPEID_UNIT || unit->GetTypeId() == TYPEID_PLAYER)
+                if (unit->GetTypeId() == TYPEID_UNIT)
                 {
                     // This will only be called if the passenger dies
                     if (_instance)
@@ -919,6 +944,10 @@ public:
                             malygos->AI()->SetData(DATA_SUMMON_DEATHS, malygos->AI()->GetData(DATA_SUMMON_DEATHS)+1);
                     }
 
+                    me->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
+                }
+                else if (_instance)
+                {
                     me->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
                 }
 
@@ -931,14 +960,9 @@ public:
                         me->NearTeleportTo(me->GetPositionX(), me->GetPositionY(), GROUND_Z, 0);
                     me->SetHomePosition(me->GetPositionX(), me->GetPositionY(), me->GetPositionZ(), me->GetOrientation());
                     me->setFaction(FACTION_FRIENDLY);
-                    me->AI()->EnterEvadeMode();
+                    me->AI()->Reset();
                 }
             }
-        }
-
-        void EnterEvadeMode()
-        {
-            // we dont evade
         }
 
         void DoAction(int32 const action)
@@ -1007,7 +1031,7 @@ public:
 
         void Reset()
         {
-            DoCast(me, SPELL_ARCANE_OVERLOAD, false);
+            DoCast(me, SPELL_ARCANE_OVERLOAD_1, false);
         }
 
         void UpdateAI(uint32 const /*diff*/)
@@ -1035,13 +1059,21 @@ public:
 
         void IsSummonedBy(Unit* summoner)
         {
-            summoner->CastSpell(me, SPELL_RIDE_RED_DRAGON, true);
+            summoner->CastSpell(me, SPELL_RIDE_RED_DRAGON_TRIGGERED, true);
         }
 
         void PassengerBoarded(Unit* /*unit*/, int8 /*seat*/, bool apply)
         {
             if (!apply)
-                me->DespawnOrUnsummon();
+                me->DespawnOrUnsummon(2050);
+                me->SetOrientation(2.5f);
+                me->SetSpeed(MOVE_FLIGHT, 1.0f, true);
+                Position pos;
+                me->GetPosition(&pos);
+                pos.m_positionX += 10.0f;
+                pos.m_positionY += 10.0f;
+                pos.m_positionZ += 12.0f;
+                me->GetMotionMaster()->MovePoint(1, pos);
         }
     };
 };
@@ -1102,8 +1134,9 @@ class achievement_denyin_the_scion : public AchievementCriteriaScript
 
         bool OnCheck(Player* source, Unit* /*target*/)
         {
+            // only melee disks can be used
             if (Unit* disk = source->GetVehicleBase())
-                if (disk->GetEntry() == NPC_HOVER_DISK_CASTER || disk->GetEntry() == NPC_HOVER_DISK_MELEE)
+                if (disk->GetEntry() == NPC_HOVER_DISK_MELEE)
                     return true;
             return false;
         }
@@ -1117,8 +1150,9 @@ void AddSC_boss_malygos()
     new npc_hover_disk();
     new npc_arcane_overload();
     new npc_wyrmrest_skytalon();
+    new npc_alexstrasza_eoe();
     new spell_malygos_vortex_dummy();
     new spell_malygos_vortex_visual();
-    new npc_alexstrasza_eoe();
+    new spell_wyrmrest_skytalon_ride_red_dragon_buddy_trigger();
     new achievement_denyin_the_scion();
 }
